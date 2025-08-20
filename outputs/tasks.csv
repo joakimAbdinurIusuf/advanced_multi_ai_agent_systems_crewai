@@ -1,0 +1,12 @@
+task_name,estimated_time_hours,required_resources
+Create Responsive Design,32.0,['Bob Smith (Designer)']
+Implement User Interface (UI),32.0,['Bob Smith (Designer)']
+Develop Navigation System,40.0,['Jane Doe (Software Engineer)']
+Create 'About Us' Page,30.0,['Jane Doe (Software Engineer)']
+Design 'Services' Page,30.0,['Jane Doe (Software Engineer)']
+Create 'Contact Us' Page,30.0,['Jane Doe (Software Engineer)']
+Implement Blog Section,80.0,['Jane Doe (Software Engineer)']
+Optimize for Performance and SEO,40.0,['Jane Doe (Software Engineer)']
+Integrate Social Media Links,20.0,['Jane Doe (Software Engineer)']
+Add Testimonials Section,20.0,['Jane Doe (Software Engineer)']
+Quality Assurance Testing,80.0,"['Alice Johnson (QA Engineer)', 'Tom Brown (QA Engineer)']"
