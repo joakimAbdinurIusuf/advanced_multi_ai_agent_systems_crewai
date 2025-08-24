@@ -8,6 +8,8 @@ load_dotenv()
 
 import os
 import yaml
+import json
+from datetime import datetime
 from crewai import Agent, Task, Crew
 os.environ['OPENAI_MODEL_NAME'] = 'gpt-4o-mini'
 
@@ -45,7 +47,7 @@ class CompanyInfo(BaseModel):
     industry: str = Field(..., description="The industry in which the company operates.")
     company_size: int = Field(..., description="The size of the company in terms of employee count.")
     revenue: Optional[float] = Field(None, description="The annual revenue of the company, if available.")
-    market_presence: int = Field(..., ge=0, le=10, description="A score representing the company's market presence (0-10).")
+    market_presence: int = Field(..., description="A score representing the company's market presence (0-10).")
 
 class LeadScore(BaseModel):
     score: int = Field(..., ge=0, le=100, description="The final score assigned to the lead (0-100).")
@@ -187,159 +189,113 @@ class SalesPipeline(Flow):
         # Here we would send the emails to the leads
         return emails
 
-flow = SalesPipeline()
-flow.plot()
-
-from IPython.display import IFrame
-
-IFrame(src='./crewai_flow.html', width='150%', height=600)
-
-emails = await flow.kickoff()
-
-import pandas as pd
-
-# Convert UsageMetrics instance to a DataFrame
-df_usage_metrics = pd.DataFrame([flow.state["score_crews_results"][0].token_usage.dict()])
-
-# Calculate total costs
-costs = 0.150 * df_usage_metrics['total_tokens'].sum() / 1_000_000
-print(f"Total costs: ${costs:.4f}")
-
-# Display the DataFrame
-df_usage_metrics
-
-import pandas as pd
-
-# Convert UsageMetrics instance to a DataFrame
-df_usage_metrics = pd.DataFrame([emails[0].token_usage.dict()])
-
-# Calculate total costs
-costs = 0.150 * df_usage_metrics['total_tokens'].sum() / 1_000_000
-print(f"Total costs: ${costs:.4f}")
-
-# Display the DataFrame
-df_usage_metrics
-
-scores = flow.state["score_crews_results"]
-
-import pandas as pd
-from IPython.display import display, HTML
-
-lead_scoring_result = scores[0].pydantic
-
-# Create a dictionary with the nested structure flattened
-data = {
-    'Name': lead_scoring_result.personal_info.name,
-    'Job Title': lead_scoring_result.personal_info.job_title,
-    'Role Relevance': lead_scoring_result.personal_info.role_relevance,
-    'Professional Background': lead_scoring_result.personal_info.professional_background,
-    'Company Name': lead_scoring_result.company_info.company_name,
-    'Industry': lead_scoring_result.company_info.industry,
-    'Company Size': lead_scoring_result.company_info.company_size,
-    'Revenue': lead_scoring_result.company_info.revenue,
-    'Market Presence': lead_scoring_result.company_info.market_presence,
-    'Lead Score': lead_scoring_result.lead_score.score,
-    'Scoring Criteria': ', '.join(lead_scoring_result.lead_score.scoring_criteria),
-    'Validation Notes': lead_scoring_result.lead_score.validation_notes
-}
-
-# Convert the dictionary to a DataFrame
-df = pd.DataFrame.from_dict(data, orient='index', columns=['Value'])
-
-# Reset the index to turn the original column names into a regular column
-df = df = df.reset_index()
-
-# Rename the index column to 'Attribute'
-df = df.rename(columns={'index': 'Attribute'})
-
-# Create HTML table with bold attributes and left-aligned values
-html_table = df.style.set_properties(**{'text-align': 'left'}) \
-                     .format({'Attribute': lambda x: f'<b>{x}</b>'}) \
-                     .hide(axis='index') \
-                     .to_html()
-
-# Display the styled HTML table
-display(HTML(html_table))
-
-import textwrap
-
-result_text = emails[0].raw
-wrapped_text = textwrap.fill(result_text, width=80)
-print(wrapped_text)
-
-from crewai import Flow
-from crewai.flow.flow import listen, start, and_, or_, router
-
-class SalesPipelineComplex(Flow):
+def save_outputs_to_file(data, filename, output_dir="outputs"):
+    """Save data to a file in the outputs directory"""
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(output_dir, filename)
     
-  @start()
-  def fetch_leads(self):
-    # Pull our leads from the database
-    # This is a mock, in a real-world scenario, this is where you would
-    # fetch leads from a database
-    leads = [
-      {
-        "lead_data": {
-          "name": "João Moura",
-          "job_title": "Director of Engineering",
-          "company": "Clearbit",
-          "email": "joao@clearbit.com",
-          "use_case": "Using AI Agent to do better data enrichment."
-        },
-      },
-    ]
-    return leads
+    if filename.endswith('.json'):
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
+    elif filename.endswith('.txt'):
+        with open(filepath, 'w') as f:
+            f.write(str(data))
+    elif filename.endswith('.csv'):
+        import pandas as pd
+        if isinstance(data, list) and len(data) > 0:
+            df = pd.DataFrame(data)
+            df.to_csv(filepath, index=False)
+        else:
+            with open(filepath, 'w') as f:
+                f.write(str(data))
+    
+    print(f"Output saved to: {filepath}")
 
-  @listen(fetch_leads)
-  def score_leads(self, leads):
-    scores = lead_scoring_crew.kickoff_for_each(leads)
-    self.state["score_crews_results"] = scores
-    return scores
+def main():
+    print("Starting Agentic Sales Pipeline...")
+    
+    # Create and run the flow
+    flow = SalesPipeline()
+    
+    try:
+        # Run the flow
+        print("Running lead scoring and email generation...")
+        emails = flow.kickoff()
+        
+        # Get scores from flow state
+        scores = flow.state.get("score_crews_results", [])
+        
+        print(f"Pipeline completed successfully!")
+        print(f"Generated {len(emails)} emails")
+        print(f"Scored {len(scores)} leads")
+        
+        # Save outputs to files
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Save lead scoring results
+        if scores:
+            scoring_data = []
+            for score in scores:
+                try:
+                    lead_data = score.pydantic
+                    scoring_data.append({
+                        'name': lead_data.personal_info.name,
+                        'job_title': lead_data.personal_info.job_title,
+                        'role_relevance': lead_data.personal_info.role_relevance,
+                        'professional_background': lead_data.personal_info.professional_background,
+                        'company_name': lead_data.company_info.company_name,
+                        'industry': lead_data.company_info.industry,
+                        'company_size': lead_data.company_info.company_size,
+                        'revenue': lead_data.company_info.revenue,
+                        'market_presence': lead_data.company_info.market_presence,
+                        'lead_score': lead_data.lead_score.score,
+                        'scoring_criteria': ', '.join(lead_data.lead_score.scoring_criteria),
+                        'validation_notes': lead_data.lead_score.validation_notes
+                    })
+                except Exception as e:
+                    print(f"Error processing score data: {e}")
+                    scoring_data.append({'error': str(e)})
+            
+            save_outputs_to_file(scoring_data, f"lead_scoring_results_{timestamp}.csv")
+        
+        # Save email content
+        if emails:
+            email_data = []
+            for i, email in enumerate(emails):
+                try:
+                    email_data.append({
+                        'email_id': i + 1,
+                        'content': email.raw,
+                        'token_usage': str(email.token_usage) if hasattr(email, 'token_usage') else 'N/A'
+                    })
+                except Exception as e:
+                    print(f"Error processing email data: {e}")
+                    email_data.append({'email_id': i + 1, 'error': str(e)})
+            
+            save_outputs_to_file(email_data, f"generated_emails_{timestamp}.json")
+        
+        # Save flow summary
+        summary = {
+            'timestamp': timestamp,
+            'total_leads_processed': len(scores) if scores else 0,
+            'total_emails_generated': len(emails) if emails else 0,
+            'flow_state_keys': list(flow.state.keys()) if hasattr(flow, 'state') else [],
+            'status': 'completed'
+        }
+        
+        save_outputs_to_file(summary, f"pipeline_summary_{timestamp}.json")
+        
+        print("\nAll outputs have been saved to the 'outputs' folder!")
+        
+    except Exception as e:
+        print(f"Error running pipeline: {e}")
+        # Save error information
+        error_data = {
+            'timestamp': datetime.now().strftime("%Y%m%d_%H%M%S"),
+            'error': str(e),
+            'status': 'failed'
+        }
+        save_outputs_to_file(error_data, f"pipeline_error_{timestamp}.json")
 
-  @listen(score_leads)
-  def store_leads_score(self, scores):
-    # Here we would store the scores in the database
-    return scores
-
-  @listen(score_leads)
-  def filter_leads(self, scores):
-    return [score for score in scores if score['lead_score'].score > 70]
-
-  @listen(and_(filter_leads, store_leads_score))
-  def log_leads(self, leads):
-    print(f"Leads: {leads}")
-
-  @router(filter_leads, paths=["high", "medium", "low"])
-  def count_leads(self, scores):
-    if len(scores) > 10:
-      return 'high'
-    elif len(scores) > 5:
-      return 'medium'
-    else:
-      return 'low'
-
-  @listen('high')
-  def store_in_salesforce(self, leads):
-    return leads
-
-  @listen('medium')
-  def send_to_sales_team(self, leads):
-    return leads
-
-  @listen('low')
-  def write_email(self, leads):
-    scored_leads = [lead.to_dict() for lead in leads]
-    emails = email_writing_crew.kickoff_for_each(scored_leads)
-    return emails
-
-  @listen(write_email)
-  def send_email(self, emails):
-    # Here we would send the emails to the leads
-    return emails
-
-flow = SalesPipelineComplex()
-flow.plot()
-
-from IPython.display import IFrame
-
-IFrame(src='./crewai_flow_complex.html', width='150%', height=600)
+if __name__ == "__main__":
+    main()
